@@ -20,8 +20,8 @@
 
 [submodule "bao-hypervisor"]
 	path = bao-hypervisor
-	url = git@github.com:bao-project/bao-hypervisor.git
+	url = git@github.com:malejo97/bao-hypervisor.git
 
 [submodule "bao-baremetal-guest"]
 	path = bao-baremetal-guest
-	url = git@github.com:bao-project/bao-baremetal-guest.git
+	url = git@github.com:malejo97/bao-baremetal-guest.git
