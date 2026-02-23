@@ -1,19 +1,27 @@
 [submodule "linux"]
     path = linux
-    url = ../linux.git
+    url = git@github.com:Nuclei-Software/linux.git
 
 [submodule "buildroot"]
     path = buildroot
-    url = ../buildroot.git
+    url = git@github.com:Nuclei-Software/buildroot.git
 
 [submodule "opensbi"]
     path = opensbi
-    url = ../opensbi.git
+    url = git@github.com:Nuclei-Software/opensbi.git
 
 [submodule "freeloader"]
 	path = freeloader
-	url = ../freeloader.git
+	url = git@github.com:malejo97/freeloader.git
 
 [submodule "u-boot"]
 	path = u-boot
-	url = ../u-boot.git
+	url = git@github.com:Nuclei-Software/u-boot.git
+
+[submodule "bao-hypervisor"]
+	path = bao-hypervisor
+	url = git@github.com:bao-project/bao-hypervisor.git
+
+[submodule "bao-baremetal-guest"]
+	path = bao-baremetal-guest
+	url = git@github.com:bao-project/bao-baremetal-guest.git

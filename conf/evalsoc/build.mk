@@ -1,4 +1,4 @@
-FW_TEXT_START := 0x80000000
+FW_TEXT_START := 0x82000000
 UIMAGE_AE_CMD := -a 0x80400000 -e 0x80400000
 # Need Nuclei Qemu >= 2023.10
 QEMU_MACHINE_OPTS := -M nuclei_evalsoc,download=flashxip -smp 8 -m 2G

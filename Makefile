@@ -16,10 +16,13 @@ ARCH_EXT ?=
 ## BOOT_MODE Supported:
 ## sd: boot from flash + sdcard, extra SDCard is required(kernel, rootfs, dtb placed in it)
 ## flash: boot from flash only, flash will contain images placed in sdcard of sd boot mode
-BOOT_MODE ?= sd
+BOOT_MODE := flash
 ## QEMU Disk Size in MBytes
 ## DISK_SIZE should >= 64
 DISK_SIZE ?= 1024
+
+## Guest running on top of Bao: "linux" or "baremetal"
+BAO_GUEST ?= linux
 
 # Include Nuclei RISC-V Core Makefile
 include Makefile.core
@@ -117,6 +120,22 @@ uboot_elf := $(uboot_wrkdir)/u-boot
 uboot_mkimage := $(uboot_wrkdir)/tools/mkimage
 
 uboot_cmd := $(confdir)/uboot.cmd
+
+lloader_srcdir := $(srcdir)/lloader
+lloader_image := $(lloader_srcdir)/linux-rv64-nuclei.bin
+lloader_wrkdir := $(wrkdir)/lloader
+lloader_bin := $(lloader_wrkdir)/linux-rv64-nuclei.bin
+
+bao_srcdir := $(srcdir)/bao-hypervisor
+bao_configs := $(confdir)/bao/configs
+bao_image := $(bao_srcdir)/bin/nuclei-ux1020/nuclei-$(BAO_GUEST)/bao.bin
+bao_wrkdir := $(wrkdir)/bao
+bao_bin := $(bao_wrkdir)/bao.bin
+
+baremetal_srcdir := $(srcdir)/bao-baremetal-guest
+baremetal_image := $(baremetal_srcdir)/build/nuclei-ux1020/baremetal.bin
+baremetal_wrkdir := $(wrkdir)/baremetal
+baremetal_bin := $(baremetal_wrkdir)/baremetal.bin
 
 # Directory for boot images stored in sdcard
 boot_wrkdir := $(wrkdir)/boot
@@ -281,7 +300,7 @@ linux: $(linux_wrkdir)/.config
 		ARCH=riscv \
 		CROSS_COMPILE=$(CROSS_COMPILE) \
 		PATH=$(RVPATH) \
-		vmlinux Image
+		vmlinux Image -j$(shell nproc)
 
 $(initramfs): $(buildroot_initramfs_sysroot) $(linux_image)
 	$(INITRAMFS_PRECMD)
@@ -336,6 +355,50 @@ $(platform_dtb) : $(platform_preproc_dts) $(target_gcc)
 
 $(platform_sim_dtb) : $(platform_preproc_sim_dts) $(target_gcc)
 	dtc -O dtb -o $(platform_sim_dtb) $(platform_preproc_sim_dts)
+
+.PHONY: baremetal
+
+baremetal: $(baremetal_bin)
+
+$(baremetal_bin):
+	mkdir -p $(baremetal_wrkdir)
+	$(MAKE) -C $(baremetal_srcdir) \
+		CROSS_COMPILE=riscv64-unknown-elf- \
+		PLATFORM=nuclei-ux1020 \
+		DEBUG=n
+	cp -u $(baremetal_image) $(baremetal_wrkdir)
+
+.PHONY: lloader
+
+lloader: $(lloader_bin)
+
+$(lloader_bin): $(linux_image) $(platform_dtb)
+	mkdir -p $(lloader_wrkdir)
+	$(MAKE) -C $(lloader_srcdir) \
+		CROSS_COMPILE=riscv64-unknown-elf- \
+		ARCH=rv64 \
+		IMAGE=$(linux_image) \
+		DTB=$(platform_dtb) \
+		TARGET=linux-rv64-nuclei
+	cp -u $(lloader_image) $(lloader_wrkdir)
+
+.PHONY: bao
+
+bao: $(bao_bin)
+
+ifeq ($(BAO_GUEST),linux)
+$(bao_bin): $(lloader_bin)
+else
+$(bao_bin): $(baremetal_bin)
+endif
+	mkdir -p $(bao_wrkdir)
+	$(MAKE) -C $(bao_srcdir) \
+		CROSS_COMPILE=riscv64-unknown-elf- \
+		PLATFORM=nuclei-ux1020 \
+		CONFIG_REPO=$(bao_configs) \
+		CONFIG=nuclei-$(BAO_GUEST) \
+		DEBUG=n
+	cp -u $(bao_image) $(bao_wrkdir)
 
 .PHONY: opensbi opensbi_cp_plat
 
@@ -451,16 +514,11 @@ freeloader4m: prepare4m $(freeloader_elf)
 	ls -lh $(freeloader_elf)
 endif
 
-ifeq ($(BOOT_MODE),sd)
-$(freeloader_elf): $(freeloader_srcdir) $(uboot_bin) $(opensbi_jumpbin) $(platform_dtb) $(amp_bins)
-else
-$(freeloader_elf): $(freeloader_srcdir) $(uboot_bin) $(opensbi_jumpbin) $(platform_dtb) $(boot_zip) $(amp_bins)
-endif
+$(freeloader_elf): $(freeloader_srcdir) $(bao_bin) $(opensbi_jumpbin) $(platform_dtb) $(amp_bins)
 	mkdir -p  $(freeloader_wrkdir)
 	$(MAKE) -C $(freeloader_srcdir) O=$(freeloader_wrkdir) ARCH=$(ISA) ABI=$(ABI) ARCH_EXT=$(ARCH_EXT) \
 		BOOT_MODE=$(BOOT_MODE) CROSS_COMPILE=$(CROSS_COMPILE) \
-		OPENSBI_BIN=$(opensbi_jumpbin) UBOOT_BIN=$(uboot_bin) DTB=$(platform_dtb) \
-		KERNEL_BIN=$(boot_uimage_lz4) INITRD_BIN=$(boot_uinitrd_lz4) CONFIG_MK=$(freeloader_confmk)  \
+		OPENSBI_BIN=$(opensbi_jumpbin) BAO_BIN=$(bao_bin) DTB=$(platform_dtb) CONFIG_MK=$(freeloader_confmk) \
 		CORE1_APP_BIN=$(CORE1_APP_BIN) CORE2_APP_BIN=$(CORE2_APP_BIN) CORE3_APP_BIN=$(CORE3_APP_BIN) \
 		CORE4_APP_BIN=$(CORE4_APP_BIN) CORE5_APP_BIN=$(CORE5_APP_BIN) CORE6_APP_BIN=$(CORE6_APP_BIN) CORE7_APP_BIN=$(CORE7_APP_BIN)
 
@@ -502,7 +560,7 @@ run_openocd:
 distclean:
 	rm -rf $(wrkdir_root)
 
-clean: cleanfreeloader
+clean: cleanfreeloader cleanvirt
 	rm -rf $(wrkdir)
 
 cleanboot:
@@ -524,6 +582,20 @@ clean_freeloader: cleanfreeloader
 
 cleanfreeloader:
 	$(MAKE) -C $(freeloader_srcdir) O=$(freeloader_wrkdir) clean
+
+cleanvirt: cleanbao cleanlloader cleanbaremetal
+
+cleanbao:
+	rm -rf $(bao_wrkdir)
+	$(MAKE) -C $(bao_srcdir) clean
+
+cleanlloader:
+	rm -rf $(lloader_wrkdir)
+	$(MAKE) -C $(lloader_srcdir) clean
+
+cleanbaremetal:
+	rm -rf $(baremetal_wrkdir)
+	$(MAKE) -C $(baremetal_srcdir) clean
 
 cleanopensbi:
 	rm -rf $(opensbi_wrkdir)

@@ -43,6 +43,8 @@ CONFIG_MTD_SPI_NOR=y
 CONFIG_OF_OVERLAY=y
 CONFIG_BLK_DEV_LOOP=y
 CONFIG_BLK_DEV_RAM=y
+CONFIG_BLK_DEV_INITRD=y
+CONFIG_INITRAMFS_SOURCE="/home/manuale97/Nuclei/nuclei-linux-sdk/work/evalsoc/buildroot_initramfs/images/rootfs.cpio"
 CONFIG_NETDEVICES=y
 # CONFIG_NET_VENDOR_ALACRITECH is not set
 # CONFIG_NET_VENDOR_AMAZON is not set
